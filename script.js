@@ -12,6 +12,12 @@ let totalFailures = parseInt(localStorage.getItem("totalFailures") || "0");
 
 let previousWord = null;
 
+let dailyPracticeLog = {};
+
+let globalSuccessStreak = 0;
+
+
+
 
 
 
@@ -28,13 +34,18 @@ function saveWordsToStorage() {
 
 
 window.onload = () => {
-
-     loadWordsFromStorage();
+    loadDailyPracticeLog();
+    showSection("about");
+    loadWordsFromStorage();
     renderWordList();
     renderStats();
+    renderAchievements()
 }
 
 
+setInterval(() => {
+  checkForNewAchievements();
+}, 1000);
 
 
 
@@ -160,11 +171,37 @@ function renderWordList(openFoldersOverride) {
         if (openFolders.has(folderName)) details.open = true;
 
         // 🏷️ שלב 5: כותרת תיקייה
-        const summary = document.createElement("summary");
-        summary.textContent = `📂 ${folderName} (${folderWords.length} מילים)`;
-        summary.style.fontWeight = "bold";
-        summary.style.fontSize = "1.1em";
-        summary.style.cursor = "pointer";
+const summary = document.createElement("summary");
+summary.style.display = "flex";
+summary.style.alignItems = "center";
+summary.style.gap = "10px";
+summary.style.fontWeight = "bold";
+summary.style.fontSize = "1.1em";
+summary.style.cursor = "pointer";
+
+// צ'קבוקס תיקייה
+const folderCheckbox = document.createElement("input");
+folderCheckbox.type = "checkbox";
+folderCheckbox.title = "בחר/הסר את כל המילים בתיקייה זו";
+
+// פעולה: סימון/ביטול כל תיבות הסימון שבתיקייה
+folderCheckbox.onchange = () => {
+    const checkboxes = details.querySelectorAll("input.word-checkbox");
+    checkboxes.forEach(cb => cb.checked = folderCheckbox.checked);
+};
+
+// טקסט התיקייה
+const folderLabel = document.createElement("span");
+folderLabel.textContent = `📂 ${folderName} (${folderWords.length} מילים)`;
+
+// שינוי רקע בהובר
+summary.onmouseover = () => summary.style.backgroundColor = "#f7f7f7";
+summary.onmouseout = () => summary.style.backgroundColor = "";
+
+// הרכבת הסיכום
+summary.appendChild(folderCheckbox);
+summary.appendChild(folderLabel);
+
 
         summary.onmouseover = () => summary.style.backgroundColor = "#f7f7f7";
         summary.onmouseout = () => summary.style.backgroundColor = "";
@@ -526,6 +563,25 @@ function handleWordSearch() {
 
 
 
+function importWordsFromJsonData(imported) {
+  if (!Array.isArray(imported)) {
+    alert("הקובץ אינו בפורמט תקין.");
+    return;
+  }
+
+  const existingSet = new Set(words.map(w => w.hebrew + "|" + w.arabic));
+  const newWords = imported.filter(w => {
+    const key = w.hebrew + "|" + w.arabic;
+    return !existingSet.has(key);
+  });
+
+  words = words.concat(newWords);
+  saveWordsToStorage();
+
+  alert("נוספו " + newWords.length + " מילים חדשות!");
+  showSection("manage");
+  renderWordList();
+}
 
 
 
@@ -538,24 +594,7 @@ function importWords(event) {
   reader.onload = function(e) {
     try {
       const imported = JSON.parse(e.target.result);
-      if (!Array.isArray(imported)) throw new Error("Invalid format");
-
-      const existingSet = new Set(words.map(w => w.hebrew + "|" + w.arabic));
-      const newWords = imported.filter(w => {
-        const key = w.hebrew + "|" + w.arabic;
-        return !existingSet.has(key);
-      });
-
-      words = words.concat(newWords); // ⬅️ עדכון המערך הגלובלי
-      saveWordsToStorage();           // ⬅️ ואז שמירה
-
-      alert("ייבוא הושלם! נוספו " + newWords.length + " מילים חדשות.");
-
-      setTimeout(() => {
-        showSection("manage");
-        renderWordList();
-      }, 0);
-
+      importWordsFromJsonData(imported);
     } catch (err) {
       alert("התרחשה שגיאה בקריאת הקובץ: " + err.message);
     }
@@ -563,6 +602,15 @@ function importWords(event) {
 
   reader.readAsText(file);
 }
+
+
+function loadWordFile(url) {
+  fetch(url)
+    .then(res => res.json())
+    .then(importWordsFromJsonData)
+    .catch(() => alert("אירעה שגיאה בטעינת הקובץ."));
+}
+
 
 
 
@@ -662,6 +710,21 @@ function exportSelectedWords() {
 
 
 
+const practiceTaglines = [
+  "התרגול עכשיו, התודה אחר כך",
+  "רמה 6 שלך נראית לי קצת ריקה...",
+  "חזרה קטנה - שליטה גדולה",
+  "כאב זמני, ערבית לנצח",
+  "מילים שאתה באמת צריך",
+  "תרגול הוא כמו שווארמה: עדיף חם ובמנות קטנות",
+  "הדרך לשליטה מלאה מתחילה כאן",
+  "תרגל – ותן לזה זמן לשקוע"
+];
+
+
+
+
+
 
 
 function showSection(id) {
@@ -676,7 +739,15 @@ function showSection(id) {
         renderAchievements();
     } else if (id === "practice") {
   loadWordsFromStorage();
-       // ✨ הצגת כפתור התחלה והוספת ריווח מותנה
+    // ✨ מילוי משפט רנדומלי בראש העמוד
+    const randomTagline = practiceTaglines[Math.floor(Math.random() * practiceTaglines.length)];
+    const taglineEl = document.querySelector(".practice-header .tagline");
+    if (taglineEl) taglineEl.textContent = randomTagline;
+
+    // ✨ מילוי תפריט תיקיות
+    populateFolderFilter();
+
+    // ✨ הצגת כפתור התחלה והוספת ריווח מותנה
     document.getElementById("start-button-container").style.display = "block";
     document.getElementById("folder-filter-container").classList.add("with-start-button");
 
@@ -695,7 +766,6 @@ function showSection(id) {
 }
     
 }
-
 
 
 
@@ -869,9 +939,33 @@ if (neverPracticed.length > 0) {
 
 
 
+ // שמירת מידע כל תרגול יומי 
+
+function loadDailyPracticeLog() {
+  const raw = localStorage.getItem("dailyPracticeLog");
+  dailyPracticeLog = raw ? JSON.parse(raw) : {};
+}
 
 
+function saveDailyPracticeLog() {
+  localStorage.setItem("dailyPracticeLog", JSON.stringify(dailyPracticeLog));
+}
 
+function incrementTodayPracticeCount() {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  dailyPracticeLog[today] = (dailyPracticeLog[today] || 0) + 1;
+
+  // מחיקה של ימים ישנים – שמירה של 40 ימים אחרונים בלבד
+  const days = Object.keys(dailyPracticeLog).sort(); // ממוין מהישן לחדש
+  if (days.length > 40) {
+    const excess = days.length - 40;
+    for (let i = 0; i < excess; i++) {
+      delete dailyPracticeLog[days[i]];
+    }
+  }
+
+  saveDailyPracticeLog();
+}
 
 
 
@@ -975,8 +1069,6 @@ function loadNextWord() {
 
 
 
-
-
 function revealAnswer() {
     const answerEl = document.getElementById("answer-word");
     const buttonsEl = document.getElementById("response-buttons");
@@ -1006,11 +1098,23 @@ function revealAnswer() {
 
 
 
-
-
 function submitAnswer(success) {
     if (!currentWord.history) currentWord.history = [];
     currentWord.history.push(success);
+       incrementTodayPracticeCount();
+// ✅ עדכון רצף הצלחות גלובלי
+if (success) {
+  globalSuccessStreak++;
+} else {
+  globalSuccessStreak = 0;
+}
+
+// ✅ שמירת שיא הצלחות רצופות
+let maxSuccessStreak = parseInt(localStorage.getItem("maxSuccessStreak") || "0");
+if (globalSuccessStreak > maxSuccessStreak) {
+  localStorage.setItem("maxSuccessStreak", globalSuccessStreak);
+}
+
     if (currentWord.history.length > 3) currentWord.history.shift();
 
     const recent = currentWord.history.slice(-3);
@@ -1091,3 +1195,338 @@ localStorage.setItem("totalFailures", totalFailures);
 
 
 
+
+
+
+
+
+
+const achievements = [
+  {
+    id: "award1",
+    revealedTitle: "33 המילים הראשונות שלי :)",
+    coveredTitle: "צברו 33 מילים בעמוד ניהול המילים",
+    description:"במסורת המוסלמית משתמשים בסֻבְּחָה, מחרוזת תפילה, לחזרה על אמירות של שבח והודיה 33 פעמים.<br> כל כל חרוז מסמל רגע של כוונה, והתמדה.<br> גם אתם עכשיו כמו הסבחה, יצרתם שרשרת של 33 פעולות רצופות.",
+    image: "images/SHARSHERET.png",
+    isUnlocked: () => words.length >= 33
+  },
+  {
+    id: "award2",
+    revealedTitle: "100 הצלחות",
+    coveredTitle: "הגיעו ל-100 הצלחות בתרגול",
+    description: "הגעת למאה הצלחות בעמוד התרגול! <br> זה יפה, זה נחמד, זו התחלה! אך כבר אמרו רבותינו כי: ''אינו דומה שונה פרקו מאה פעמים לשונה פרקו מאה ואחד''.<br>אז קדימה לעבודה!",
+    image: "images/MADBEKA.png",
+    isUnlocked: () => parseInt(localStorage.getItem("totalSuccesses") || "0") >= 100
+  },
+  {
+    id: "award3",
+    revealedTitle: "50 מילים ברמה 6!",
+    coveredTitle: "50 מילים ברמה 6 והפרס שלכם",
+    description: "ברגע שתינוק צובר כ-50 מילים, לרוב סביב גיל שנה וחצי, מתרחש ''פרץ לקסיקלי'' – תקופה של האצה מהירה מאוד בלמידת מילים, ולאחריה מופיעים לרוב חיבורים של שתי מילים כמו:<br> אבא הלך, עוד אוכל, לא רוצה.<br> אילו מילים אתם כבר יודעים לחבר?",
+    image: "images/MATARA1.png",
+    isUnlocked: () => words.filter(w => w.level === 6).length >= 13
+  },
+  {
+ id: "award4",
+    revealedTitle: "דגל מתרגלים יומיים 😏",
+    coveredTitle: "פרס לאנשים שמתרגלים כל יום",
+    description: "תרגלתם את הערבית שלכם במשך 7 ימים ללא דילוגים!<br> דגל המתרגלים היומיים שלכם בצדק,<br> זו הדרך הנכונה להצלחה.",
+    image: "images/FLAG.png",
+    isUnlocked: () => has7DayStreak()
+  },
+  {
+ id: "award5",
+    revealedTitle: "102 הצלחות רצופות",
+    coveredTitle: "פרס למי שלעולם לא טועה (טוב, כמעט)",
+    description: "וואו! 102 הצלחות רצופות ללא טעות!<br> הידעת? <br> 102 הוא המספר האטומי של נובליום - חומר רדיואקטיבי! <br> חומר נדיר ומלא עוצמה אך זמני ומתכלה... <br><br> תוכלו לשבור את השיא של עצמכם? השיא האישי מופיע בעמוד הסטטיסטיקה",
+    image: "images/NO.png",
+    isUnlocked: () => {
+    const streak = parseInt(localStorage.getItem("maxSuccessStreak") || "0");
+    return streak >= 102;
+      }
+  },
+{
+ id: "award6",
+    revealedTitle: "250 טעויות",
+    coveredTitle: "???????",
+    description: "אין למידה בלי טעות, ואין התקדמות בלי אומץ לטעות... <br> אשריכם שזכיתם בפרס יוקרתי זה. <br> מי ייתן ותזכו לעוד אלפי טעויות במסע הלימוד שלכם.",
+    image: "images/YAEN.png",
+    isUnlocked: () => totalFailures >= 250
+  },
+{
+ id: "award7",
+    revealedTitle: "גביע עין הנץ",
+    coveredTitle: "מעל 2500 תרגולים עם 93% אחוזי הצלחה",
+    description: "אין למידה בלי טעות, ואין התקע הלימוד שלכם.",
+    image: "images/cup.png",
+    isUnlocked: () => totalFailures >= 250
+  },
+{
+ id: "award8",
+    revealedTitle: "250 טעויות",
+    coveredTitle: "אוצר של מילים",
+    description: "אין למידה בלי טעות, ואין התקדמות בלי אומץ לטעות... <br> אשריכם שזכיתם בפרס יוקרתי זה. <br> מי ייתן ותזכו לעוד אלפי טעויות במסע הלימוד שלכם.",
+    image: "images/YAEN.png",
+    isUnlocked: () => totalFailures >= 250
+  },
+{
+ id: "award9",
+    revealedTitle: "250 טעויות",
+    coveredTitle: "???????",
+    description: "אין למידה בלי טעות, ואין התקדמות בלי אומץ לטעות... <br> אשריכם שזכיתם בפרס יוקרתי זה. <br> מי ייתן ותזכו לעוד אלפי טעויות במסע הלימוד שלכם.",
+    image: "images/YAEN.png",
+    isUnlocked: () => totalFailures >= 250
+  },
+{
+ id: "award10",
+    revealedTitle: "250 טעויות",
+    coveredTitle: "???????",
+    description: "אין למידה בלי טעות, ואין התקדמות בלי אומץ לטעות... <br> אשריכם שזכיתם בפרס יוקרתי זה. <br> מי ייתן ותזכו לעוד אלפי טעויות במסע הלימוד שלכם.",
+    image: "images/YAEN.png",
+    isUnlocked: () => totalFailures >= 250
+  }
+
+];
+
+
+
+
+
+
+
+
+function getUnlockedAchievementsCount() {
+  const unlocked = JSON.parse(localStorage.getItem("unlockedRewards") || "[]");
+  return unlocked.length;
+}
+
+
+
+
+
+
+function has7DayStreak(minPerDay = 10) {
+  if (localStorage.getItem("streak7Unlocked") === "true") {
+    return true;
+  }
+
+  const log = JSON.parse(localStorage.getItem("dailyPracticeLog") || "{}");
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    if ((log[key] || 0) < minPerDay) {
+      return false;
+    }
+  }
+
+  // ✅ הצלחה – נשמור בזיכרון לצמיתות
+  localStorage.setItem("streak7Unlocked", "true");
+  return true;
+}
+
+
+
+
+
+
+
+
+function renderStats() {
+    const container = document.getElementById("stats-container");
+
+    const levels = [0, 0, 0, 0, 0, 0];
+
+    words.forEach(w => {
+        if (w.level >= 1 && w.level <= 6) {
+            levels[w.level - 1]++;
+        }
+    });
+
+    const total = totalSuccesses + totalFailures;
+    const rate = total ? Math.round((totalSuccesses / total) * 100) : 0;
+       const unlockedCount = getUnlockedAchievementsCount();
+
+
+    container.innerHTML = `
+
+        <p><span style="font-size: 1.2em;">📌 מספר הצמדים הכולל: <strong>${words.length}</strong></span></p>
+        <ul>
+            ${levels.map((n, i) => `<li>רמה ${i + 1}: ${n}</li>`).join("")}
+        </ul>
+        <p>🎯 הצלחות: <strong>${totalSuccesses}</strong> | טעויות: <strong>${totalFailures}</strong></p>
+             <p>🔥 שיא הצלחות רצופות: <strong>${localStorage.getItem("maxSuccessStreak") || 0}</strong></p>
+             <p>✅ אחוז הצלחה כולל: <strong>${rate}%</strong></p>
+        <p>🏆 מספר פרסים שהושגו: <strong>${unlockedCount}</strong></p>
+
+    `;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function renderAchievements() {
+  loadWordsFromStorage(); // ודא שהגלובלי מעודכן
+  const container = document.getElementById("awards-container");
+  container.innerHTML = ""; // ניקוי קודם
+
+  const unlocked = JSON.parse(localStorage.getItem("unlockedRewards") || "[]");
+
+  achievements.forEach(award => {
+    const alreadyUnlocked = unlocked.includes(award.id);
+    const currentlyEligible = award.isUnlocked();
+    const achieved = alreadyUnlocked || currentlyEligible;
+
+    // אם זה עדיין לא היה ברשימת unlocked אבל זכאי עכשיו – הוסף
+    if (currentlyEligible && !alreadyUnlocked) {
+      unlocked.push(award.id);
+      localStorage.setItem("unlockedRewards", JSON.stringify(unlocked));
+    }
+
+    const card = document.createElement("div");
+    card.className = "award-card";
+    card.style.opacity = achieved ? "1" : "0.25";
+
+    const imageSrc = achieved ? award.image : "images/QM.png";
+    const title = achieved ? award.revealedTitle : award.coveredTitle;
+
+    card.innerHTML = `
+      <img src="${imageSrc}" alt="${title}" class="award-image">
+      <p class="award-title">${title}</p>
+      ${achieved ? `<p class="award-desc">${award.description}</p>` : ""}
+    `;
+
+    container.appendChild(card);
+  });
+}
+
+
+
+
+
+
+
+
+
+
+
+function checkForNewAchievements() {
+  const unlocked = JSON.parse(localStorage.getItem("unlockedRewards") || "[]");
+  let updated = false;
+
+  achievements.forEach(a => {
+    if (!unlocked.includes(a.id) && a.isUnlocked()) {
+      unlocked.push(a.id);
+      localStorage.setItem("unlockedRewards", JSON.stringify(unlocked));
+      showRewardPopup(a); // 🎉 תציג את הפרס!
+      updated = true;
+    }
+  });
+
+ // עדכון רק אם נוספו פרסים חדשים
+  if (updated) {
+    localStorage.setItem("unlockedRewards", JSON.stringify([...unlocked]));
+  }
+
+  return updated;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function showRewardPopup(achievement) {
+  document.getElementById("reward-image").src = achievement.image;
+  document.getElementById("reward-title").innerHTML = achievement.revealedTitle;
+  document.getElementById("reward-description").innerHTML = achievement.description;
+  document.getElementById("reward-popup").style.display = "flex";
+}
+
+function hideRewardPopup() {
+  document.getElementById("reward-popup").style.display = "none";
+}
+
+
+
+
+
+
+
+
+
+
+document.addEventListener("DOMContentLoaded", function () {
+  const genBtn = document.getElementById("generate-sentence-btn");
+  if (genBtn) {
+    genBtn.onclick = generateSentenceFromWords;
+  }
+});
+
+async function generateSentenceFromWords() {
+  loadWordsFromStorage();
+  const lang = document.getElementById("sentence-lang").value;
+  const allHeb = words.map(w => w.hebrew).filter(Boolean);
+  const allArb = words.map(w => w.arabic).filter(Boolean);
+
+  const vocab = (lang === "ar" ? allArb : allHeb);
+  const promptLang = (lang === "ar" ? "בערבית" : "בעברית");
+
+  if (vocab.length < 3) {
+    document.getElementById("generated-sentence").textContent = "צריך לפחות 3 מילים.";
+    return;
+  }
+
+  const userPrompt = `צור משפט ${promptLang} תקני, אך ורק מהמילים הבאות ברשימה (אפשר לחזור על מילים):\n${vocab.join(", ")}`;
+
+  const apiKey = "PASTE_YOUR_OPENAI_KEY_HERE"; // ← כאן שים את ה־API KEY שלך
+  document.getElementById("generated-sentence").textContent = "מייצר משפט...";
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + apiKey
+      },
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        messages: [
+          {role: "system", content: "אתה בונה משפטים הגיוניים אך ורק מתוך אוצר מילים מוגבל."},
+          {role: "user", content: userPrompt}
+        ],
+        temperature: 0.7,
+        max_tokens: 40
+      })
+    });
+
+    const data = await response.json();
+    let msg = "לא נוצר משפט, נסה שוב או בדוק את ה־API KEY.";
+    if (data.choices && data.choices.length > 0) {
+      msg = data.choices[0].message.content.trim();
+    }
+    document.getElementById("generated-sentence").textContent = msg;
+  } catch (err) {
+    document.getElementById("generated-sentence").textContent = "אירעה שגיאה: " + err.message;
+  }
+}
